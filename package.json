@@ -1,0 +1,60 @@
+{
+  "name": "rehber-nip05",
+  "version": "1.0.0",
+  "description": "rehber.dev - Nostr NIP-05 & Lightning Address (LNURL-pay) Service",
+  "license": "MIT",
+  "author": "Emre Yılmaz <@delirehberi>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/delirehberi/rehber.dev.git"
+  },
+  "homepage": "https://rehber.dev",
+  "bugs": {
+    "url": "https://github.com/delirehberi/rehber.dev/issues"
+  },
+  "keywords": [
+    "nostr",
+    "nip-05",
+    "nip-07",
+    "nip-46",
+    "nip-98",
+    "lightning-network",
+    "lud-16",
+    "lnurl-pay",
+    "cloudflare-workers",
+    "cloudflare-d1"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev:frontend": "vite",
+    "build:frontend": "vite build",
+    "preview": "vite preview",
+    "build:worker": "tsc -p tsconfig.worker.json --noEmit",
+    "build": "vite build && tsc -p tsconfig.worker.json --noEmit",
+    "test": "node --experimental-strip-types --test tests/worker.test.ts",
+    "dev": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "d1:init-local": "wrangler d1 execute rehber-nip05-db --local --file=./schema.sql",
+    "d1:init-remote": "wrangler d1 execute rehber-nip05-db --remote --command=\"CREATE TABLE IF NOT EXISTS nip05_records (name TEXT PRIMARY KEY COLLATE NOCASE, pubkey TEXT NOT NULL UNIQUE, relays TEXT NOT NULL DEFAULT '[]', lightning_address TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS idx_nip05_pubkey ON nip05_records(pubkey); CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);\""
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "nostr-tools": "^2.10.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250224.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.1",
+    "wrangler": "^3.109.2"
+  }
+}
