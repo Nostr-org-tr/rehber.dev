@@ -12,6 +12,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/.well-known': 'http://localhost:8787',
+      '/nostr.json': 'http://localhost:8787',
       '/api': 'http://localhost:8787'
     }
   }

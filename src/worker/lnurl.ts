@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { getRecordByName } from './db';
+import { getRecordByName } from './db.ts';
 import type { LnurlPayResponse } from '../shared/types';
 
 const CORS_HEADERS = {

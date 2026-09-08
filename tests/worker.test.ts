@@ -5,6 +5,7 @@ import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import { verifyNip98Auth } from '../src/worker/auth.ts';
 import { checkApiOrigin } from '../src/worker/origin.ts';
 import { verifyTurnstileToken } from '../src/worker/turnstile.ts';
+import worker from '../src/worker/index.ts';
 
 describe('Validation Helpers', () => {
   it('validates correct usernames', () => {
@@ -155,3 +156,138 @@ describe('NIP-98 Authentication', () => {
     assert.equal(res2.success, false);
   });
 });
+
+describe('NIP-05 & nostr.json Endpoints', () => {
+  const mockDb = {
+    prepare: (sql: string) => ({
+      bind: (...args: unknown[]) => ({
+        first: async () => {
+          if (sql.includes('WHERE name = ?')) {
+            const name = args[0] as string;
+            if (name === 'emre') {
+              return {
+                name: 'emre',
+                pubkey: 'npub_test_key_emre',
+                relays: JSON.stringify(['wss://relay.damus.io']),
+                lightning_address: 'emre@rehber.dev',
+                created_at: 1000,
+                updated_at: 1000
+              };
+            }
+            return null;
+          }
+          return null;
+        },
+        all: async () => {
+          if (sql.includes('FROM nip05_records')) {
+            return {
+              results: [
+                {
+                  name: 'emre',
+                  pubkey: 'npub_test_key_emre',
+                  relays: JSON.stringify(['wss://relay.damus.io']),
+                  lightning_address: 'emre@rehber.dev',
+                  created_at: 1000,
+                  updated_at: 1000
+                },
+                {
+                  name: 'delirehberi',
+                  pubkey: 'npub_test_key_delirehberi',
+                  relays: '[]',
+                  lightning_address: null,
+                  created_at: 1001,
+                  updated_at: 1001
+                }
+              ]
+            };
+          }
+          return { results: [] };
+        },
+        run: async () => ({})
+      })
+    })
+  };
+
+  const mockEnv = {
+    DB: mockDb as any,
+    ASSETS: {
+      fetch: async () => new Response('SPA index.html', { status: 200, headers: { 'Content-Type': 'text/html' } })
+    } as any,
+    ALLOWED_HOSTS: 'rehber.dev,localhost,127.0.0.1'
+  };
+
+  const mockCtx = {
+    waitUntil: () => {},
+    passThroughOnException: () => {}
+  } as any;
+
+  it('serves NIP-05 response on /.well-known/nostr.json with ?name=', async () => {
+    const req = new Request('http://localhost:8787/.well-known/nostr.json?name=emre', {
+      method: 'GET'
+    });
+    const res = await worker.fetch(req, mockEnv, mockCtx);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('Content-Type'), 'application/json');
+
+    const data = await res.json() as { names: Record<string, string>; relays?: Record<string, string[]> };
+    assert.equal(data.names.emre, 'npub_test_key_emre');
+    assert.deepEqual(data.relays?.['npub_test_key_emre'], ['wss://relay.damus.io']);
+  });
+
+  it('serves NIP-05 response on /nostr.json alias path', async () => {
+    const req = new Request('http://localhost:8787/nostr.json?name=emre', {
+      method: 'GET'
+    });
+    const res = await worker.fetch(req, mockEnv, mockCtx);
+    assert.equal(res.status, 200);
+
+    const data = await res.json() as { names: Record<string, string> };
+    assert.equal(data.names.emre, 'npub_test_key_emre');
+  });
+
+  it('normalizes full identifier user@domain in ?name=', async () => {
+    const req = new Request('http://localhost:8787/.well-known/nostr.json?name=emre@rehber.dev', {
+      method: 'GET'
+    });
+    const res = await worker.fetch(req, mockEnv, mockCtx);
+    assert.equal(res.status, 200);
+
+    const data = await res.json() as { names: Record<string, string> };
+    assert.equal(data.names.emre, 'npub_test_key_emre');
+  });
+
+  it('returns directory listing when no name parameter is provided', async () => {
+    const req = new Request('http://localhost:8787/.well-known/nostr.json', {
+      method: 'GET'
+    });
+    const res = await worker.fetch(req, mockEnv, mockCtx);
+    assert.equal(res.status, 200);
+
+    const data = await res.json() as { names: Record<string, string>; relays?: Record<string, string[]> };
+    assert.equal(data.names.emre, 'npub_test_key_emre');
+    assert.equal(data.names.delirehberi, 'npub_test_key_delirehberi');
+    assert.deepEqual(data.relays?.['npub_test_key_emre'], ['wss://relay.damus.io']);
+  });
+
+  it('returns empty names map when record is not found', async () => {
+    const req = new Request('http://localhost:8787/.well-known/nostr.json?name=unknown', {
+      method: 'GET'
+    });
+    const res = await worker.fetch(req, mockEnv, mockCtx);
+    assert.equal(res.status, 200);
+
+    const data = await res.json() as { names: Record<string, string> };
+    assert.deepEqual(data.names, {});
+  });
+
+  it('handles CORS OPTIONS preflight correctly', async () => {
+    const req = new Request('http://localhost:8787/.well-known/nostr.json', {
+      method: 'OPTIONS'
+    });
+    const res = await worker.fetch(req, mockEnv, mockCtx);
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+  });
+});
+

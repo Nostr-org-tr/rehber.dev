@@ -1,5 +1,5 @@
 import type { D1Database, Fetcher, ExecutionContext } from '@cloudflare/workers-types';
-import { verifyNip98Auth } from './auth';
+import { verifyNip98Auth } from './auth.ts';
 import {
   validateName,
   validateLightningAddress,
@@ -7,12 +7,13 @@ import {
   getRecordByPubkey,
   createRecord,
   updateRecord,
-  deleteRecordByPubkey
-} from './db';
-import { handleLnurlPay } from './lnurl';
-import { checkRateLimit, getClientIp, cleanupExpiredRateLimits } from './ratelimit';
-import { verifyTurnstileToken } from './turnstile';
-import { checkApiOrigin } from './origin';
+  deleteRecordByPubkey,
+  getAllRecords
+} from './db.ts';
+import { handleLnurlPay } from './lnurl.ts';
+import { checkRateLimit, getClientIp, cleanupExpiredRateLimits } from './ratelimit.ts';
+import { verifyTurnstileToken } from './turnstile.ts';
+import { checkApiOrigin } from './origin.ts';
 import type { RegisterRequest, UpdateProfileRequest, Nip05Response } from '../shared/types';
 
 export interface Env {
@@ -27,6 +28,7 @@ const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, DELETE',
   'Access-Control-Allow-Headers': 'Authorization, Content-Type, CF-Turnstile-Response',
+  'Access-Control-Max-Age': '86400',
 };
 
 function jsonResponse(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
@@ -63,13 +65,32 @@ export default {
       });
     }
 
-    // 1. PUBLIC NIP-05 Endpoint: /.well-known/nostr.json?name=<name>
-    if (pathname === '/.well-known/nostr.json' && request.method === 'GET') {
-      const name = url.searchParams.get('name');
+    // 1. PUBLIC NIP-05 Endpoint: /.well-known/nostr.json & /nostr.json
+    if ((pathname === '/.well-known/nostr.json' || pathname === '/nostr.json') && request.method === 'GET') {
+      const rawName = url.searchParams.get('name');
+      const name = rawName ? rawName.trim().toLowerCase().split('@')[0] : null;
 
       if (!name) {
-        const emptyResponse: Nip05Response = { names: {} };
-        return jsonResponse(emptyResponse, 200, {
+        const records = await getAllRecords(env.DB, 100);
+        const namesMap: Record<string, string> = {};
+        const relaysMap: Record<string, string[]> = {};
+
+        for (const r of records) {
+          namesMap[r.name] = r.pubkey;
+          if (r.relays && r.relays.length > 0) {
+            relaysMap[r.pubkey] = r.relays;
+          }
+        }
+
+        const directoryResponse: Nip05Response = {
+          names: namesMap
+        };
+
+        if (Object.keys(relaysMap).length > 0) {
+          directoryResponse.relays = relaysMap;
+        }
+
+        return jsonResponse(directoryResponse, 200, {
           'Cache-Control': 'public, max-age=60, s-maxage=120'
         });
       }

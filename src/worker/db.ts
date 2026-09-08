@@ -187,3 +187,41 @@ export async function deleteRecordByPubkey(db: D1Database, pubkey: string): Prom
   const normalizedPubkey = pubkey.trim().toLowerCase();
   await db.prepare('DELETE FROM nip05_records WHERE pubkey = ?').bind(normalizedPubkey).run();
 }
+
+export async function getAllRecords(db: D1Database, limit = 100): Promise<Nip05Record[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 500));
+  const { results } = await db
+    .prepare('SELECT name, pubkey, relays, lightning_address, created_at, updated_at FROM nip05_records ORDER BY created_at ASC LIMIT ?')
+    .bind(safeLimit)
+    .all<{
+      name: string;
+      pubkey: string;
+      relays: string;
+      lightning_address: string | null;
+      created_at: number;
+      updated_at: number;
+    }>();
+
+  if (!results || results.length === 0) {
+    return [];
+  }
+
+  return results.map((row) => {
+    let relays: string[] = [];
+    try {
+      relays = JSON.parse(row.relays);
+    } catch {
+      relays = [];
+    }
+
+    return {
+      name: row.name,
+      pubkey: row.pubkey,
+      relays,
+      lightning_address: row.lightning_address,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  });
+}
+
