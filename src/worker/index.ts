@@ -8,7 +8,8 @@ import {
   createRecord,
   updateRecord,
   deleteRecordByPubkey,
-  getAllRecords
+  getAllRecords,
+  getRecentRecords
 } from './db.ts';
 import { handleLnurlPay } from './lnurl.ts';
 import { checkRateLimit, getClientIp, cleanupExpiredRateLimits } from './ratelimit.ts';
@@ -141,6 +142,29 @@ export default {
         return jsonResponse({
           turnstileSiteKey: env.TURNSTILE_SITE_KEY || '1x00000000000000000000AA'
         });
+      }
+
+      // API: Get Recent 10 Registrations: /api/recent
+      if (pathname === '/api/recent' && request.method === 'GET') {
+        // Rate limit: Max 30 requests per minute per IP
+        const rate = await checkRateLimit(env.DB, `recent:${clientIp}`, 30, 60);
+        if (!rate.allowed) {
+          return errorResponse('Çok fazla istek gönderildi. Lütfen biraz bekleyin.', 429, {
+            'Retry-After': String(rate.resetInSeconds)
+          });
+        }
+
+        const users = await getRecentRecords(env.DB, 10);
+        return jsonResponse(
+          {
+            success: true,
+            users
+          },
+          200,
+          {
+            'Cache-Control': 'public, max-age=15, s-maxage=30'
+          }
+        );
       }
 
       // 3. API: Check username availability: /api/check-name?name=...

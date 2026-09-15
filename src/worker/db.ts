@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import type { Nip05Record } from '../shared/types';
+import type { Nip05Record, RecentUser } from '../shared/types';
 
 const RESERVED_NAMES = new Set([
   'admin',
@@ -223,5 +223,29 @@ export async function getAllRecords(db: D1Database, limit = 100): Promise<Nip05R
       updated_at: row.updated_at
     };
   });
+}
+
+export async function getRecentRecords(db: D1Database, limit = 10): Promise<RecentUser[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 50));
+  const { results } = await db
+    .prepare('SELECT name, pubkey, lightning_address, created_at FROM nip05_records ORDER BY created_at DESC LIMIT ?')
+    .bind(safeLimit)
+    .all<{
+      name: string;
+      pubkey: string;
+      lightning_address: string | null;
+      created_at: number;
+    }>();
+
+  if (!results || results.length === 0) {
+    return [];
+  }
+
+  return results.map((row) => ({
+    name: row.name,
+    pubkey: row.pubkey,
+    lightning_address: row.lightning_address,
+    created_at: row.created_at
+  }));
 }
 

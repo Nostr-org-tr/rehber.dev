@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateName, validateLightningAddress } from '../src/worker/db.ts';
+import { validateName, validateLightningAddress, getRecentRecords } from '../src/worker/db.ts';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import { verifyNip98Auth } from '../src/worker/auth.ts';
 import { checkApiOrigin } from '../src/worker/origin.ts';
@@ -180,6 +180,24 @@ describe('NIP-05 & nostr.json Endpoints', () => {
         },
         all: async () => {
           if (sql.includes('FROM nip05_records')) {
+            if (sql.includes('ORDER BY created_at DESC')) {
+              return {
+                results: [
+                  {
+                    name: 'delirehberi',
+                    pubkey: 'npub_test_key_delirehberi',
+                    lightning_address: null,
+                    created_at: 1001
+                  },
+                  {
+                    name: 'emre',
+                    pubkey: 'npub_test_key_emre',
+                    lightning_address: 'emre@rehber.dev',
+                    created_at: 1000
+                  }
+                ]
+              };
+            }
             return {
               results: [
                 {
@@ -289,5 +307,34 @@ describe('NIP-05 & nostr.json Endpoints', () => {
     assert.equal(res.status, 204);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
   });
+
+  it('retrieves recent records in descending order via db helper', async () => {
+    const records = await getRecentRecords(mockEnv.DB, 10);
+    assert.equal(records.length, 2);
+    assert.equal(records[0].name, 'delirehberi');
+    assert.equal(records[0].created_at, 1001);
+    assert.equal(records[1].name, 'emre');
+    assert.equal(records[1].created_at, 1000);
+  });
+
+  it('serves recent 10 users on /api/recent with caching headers', async () => {
+    const req = new Request('http://localhost:8787/api/recent', {
+      method: 'GET',
+      headers: {
+        'Origin': 'http://localhost:8787'
+      }
+    });
+    const res = await worker.fetch(req, mockEnv, mockCtx);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('Content-Type'), 'application/json');
+    assert.equal(res.headers.get('Cache-Control'), 'public, max-age=15, s-maxage=30');
+
+    const data = await res.json() as { success: boolean; users: Array<{ name: string; pubkey: string; created_at: number }> };
+    assert.equal(data.success, true);
+    assert.equal(data.users.length, 2);
+    assert.equal(data.users[0].name, 'delirehberi');
+    assert.equal(data.users[1].name, 'emre');
+  });
 });
+
 

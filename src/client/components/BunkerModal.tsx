@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { X, Puzzle, Server, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
-import { connectExtension, connectBunker, type NostrSigner } from '../nostr/auth';
+import { X, Puzzle, Server, ArrowRight, Loader2, AlertCircle, KeyRound, Eye, EyeOff, ShieldAlert } from 'lucide-react';
+import { connectExtension, connectBunker, connectNsec, type NostrSigner } from '../nostr/auth';
 
 interface BunkerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (signer: NostrSigner, pubkey: string) => void;
+  onSuccess: (signer: NostrSigner, pubkey: string, rememberMe?: boolean) => void;
 }
 
 export const BunkerModal: React.FC<BunkerModalProps> = ({
@@ -13,8 +13,11 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
   onClose,
   onSuccess
 }) => {
-  const [activeMode, setActiveMode] = useState<'extension' | 'bunker'>('extension');
+  const [activeMode, setActiveMode] = useState<'extension' | 'bunker' | 'nsec'>('extension');
   const [bunkerUri, setBunkerUri] = useState('');
+  const [nsecKey, setNsecKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +54,23 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
     }
   };
 
+  const handleNsecLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nsecKey.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const { signer, pubkey } = connectNsec(nsecKey);
+      onSuccess(signer, pubkey, rememberMe);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Özel anahtar doğrulanamadı');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-neutral-200 text-left relative animate-in fade-in zoom-in-95 duration-150">
@@ -67,21 +87,21 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
         </p>
 
         {/* Mode Selector */}
-        <div className="grid grid-cols-2 gap-2 p-1 bg-neutral-100 rounded-2xl mb-6">
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-neutral-100 rounded-2xl mb-6">
           <button
             type="button"
             onClick={() => {
               setActiveMode('extension');
               setError(null);
             }}
-            className={`py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 ${
+            className={`py-2 px-1 text-xs font-bold rounded-xl transition flex flex-col sm:flex-row items-center justify-center gap-1.5 text-center ${
               activeMode === 'extension'
                 ? 'bg-white text-neutral-900 shadow-xs'
                 : 'text-neutral-500 hover:text-neutral-800'
             }`}
           >
-            <Puzzle className="w-4 h-4 text-purple-600" />
-            <span>Tarayıcı Eklentisi</span>
+            <Puzzle className="w-4 h-4 text-purple-600 shrink-0" />
+            <span>Eklenti</span>
           </button>
 
           <button
@@ -90,14 +110,30 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
               setActiveMode('bunker');
               setError(null);
             }}
-            className={`py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 ${
+            className={`py-2 px-1 text-xs font-bold rounded-xl transition flex flex-col sm:flex-row items-center justify-center gap-1.5 text-center ${
               activeMode === 'bunker'
                 ? 'bg-white text-neutral-900 shadow-xs'
                 : 'text-neutral-500 hover:text-neutral-800'
             }`}
           >
-            <Server className="w-4 h-4 text-indigo-600" />
-            <span>Nostr Bunker</span>
+            <Server className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>Bunker</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveMode('nsec');
+              setError(null);
+            }}
+            className={`py-2 px-1 text-xs font-bold rounded-xl transition flex flex-col sm:flex-row items-center justify-center gap-1.5 text-center ${
+              activeMode === 'nsec'
+                ? 'bg-white text-neutral-900 shadow-xs'
+                : 'text-neutral-500 hover:text-neutral-800'
+            }`}
+          >
+            <KeyRound className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Anahtar (nsec)</span>
           </button>
         </div>
 
@@ -117,7 +153,7 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
               type="button"
               onClick={handleExtensionLogin}
               disabled={loading}
-              className="w-full py-3.5 px-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold shadow-md shadow-purple-200 transition flex items-center justify-center gap-2 disabled:bg-neutral-300"
+              className="w-full py-3.5 px-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold shadow-md shadow-purple-200 transition flex items-center justify-center gap-2 disabled:bg-neutral-300 cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -132,7 +168,7 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
               )}
             </button>
           </div>
-        ) : (
+        ) : activeMode === 'bunker' ? (
           <form onSubmit={handleBunkerLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
@@ -150,7 +186,7 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
             <button
               type="submit"
               disabled={loading || !bunkerUri.trim()}
-              className="w-full py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-md shadow-indigo-200 transition flex items-center justify-center gap-2 disabled:bg-neutral-300"
+              className="w-full py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-md shadow-indigo-200 transition flex items-center justify-center gap-2 disabled:bg-neutral-300 cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -160,6 +196,75 @@ export const BunkerModal: React.FC<BunkerModalProps> = ({
               ) : (
                 <>
                   <span>Bunker ile Bağlan</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleNsecLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
+                Nostr Özel Anahtarı (nsec veya Hex)
+              </label>
+              <div className="relative">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={nsecKey}
+                  onChange={(e) => setNsecKey(e.target.value)}
+                  placeholder="nsec1... veya 64 haneli hex anahtar"
+                  className="w-full rounded-xl border border-neutral-300 pl-3.5 pr-10 py-2.5 text-xs font-mono text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition"
+                  autoComplete="off"
+                  spellCheck="false"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 p-1 rounded-lg transition"
+                  title={showKey ? 'Gizle' : 'Göster'}
+                >
+                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="remember-nsec"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              <label htmlFor="remember-nsec" className="text-xs text-neutral-600 cursor-pointer select-none">
+                Beni bu tarayıcıda hatırla
+              </label>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-start gap-2 leading-relaxed">
+              <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <span className="font-semibold block">Güvenlik Hatırlatması</span>
+                <span>
+                  Özel anahtarınız asla sunucuya iletilmez, tüm imzalar tarayıcınızda yerel olarak atılır. Ancak maksimum güvenlik için <strong>Tarayıcı Eklentisi</strong> kullanmanız tavsiye edilir.
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !nsecKey.trim()}
+              className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md shadow-emerald-200 transition flex items-center justify-center gap-2 disabled:bg-neutral-300 cursor-pointer disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Anahtar Doğrulanıyor...</span>
+                </>
+              ) : (
+                <>
+                  <span>Özel Anahtarla Giriş Yap</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

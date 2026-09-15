@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS nip05_records (
 );
 
 CREATE INDEX IF NOT EXISTS idx_nip05_pubkey ON nip05_records(pubkey);
+CREATE INDEX IF NOT EXISTS idx_nip05_created_at ON nip05_records(created_at DESC);
 
 -- Rate limiting table for anti-spam & brute force prevention
 CREATE TABLE IF NOT EXISTS rate_limits (

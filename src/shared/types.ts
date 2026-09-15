@@ -53,3 +53,15 @@ export interface ProfileResponse {
   registered: boolean;
   record?: Nip05Record;
 }
+
+export interface RecentUser {
+  name: string;
+  pubkey: string;
+  lightning_address: string | null;
+  created_at: number;
+}
+
+export interface RecentUsersResponse {
+  success: boolean;
+  users: RecentUser[];
+}

@@ -31,11 +31,11 @@
     "preview": "vite preview",
     "build:worker": "tsc -p tsconfig.worker.json --noEmit",
     "build": "vite build && tsc -p tsconfig.worker.json --noEmit",
-    "test": "node --experimental-strip-types --test tests/worker.test.ts",
+    "test": "node --experimental-strip-types --test tests/worker.test.ts tests/auth.test.ts",
     "dev": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "d1:init-local": "wrangler d1 execute rehber-nip05-db --local --file=./schema.sql",
-    "d1:init-remote": "wrangler d1 execute rehber-nip05-db --remote --command=\"CREATE TABLE IF NOT EXISTS nip05_records (name TEXT PRIMARY KEY COLLATE NOCASE, pubkey TEXT NOT NULL UNIQUE, relays TEXT NOT NULL DEFAULT '[]', lightning_address TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS idx_nip05_pubkey ON nip05_records(pubkey); CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);\""
+    "d1:init-remote": "wrangler d1 execute rehber-nip05-db --remote --command=\"CREATE TABLE IF NOT EXISTS nip05_records (name TEXT PRIMARY KEY COLLATE NOCASE, pubkey TEXT NOT NULL UNIQUE, relays TEXT NOT NULL DEFAULT '[]', lightning_address TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS idx_nip05_pubkey ON nip05_records(pubkey); CREATE INDEX IF NOT EXISTS idx_nip05_created_at ON nip05_records(created_at DESC); CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);\""
   },
   "dependencies": {
     "clsx": "^2.1.1",

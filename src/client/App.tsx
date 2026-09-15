@@ -4,8 +4,9 @@ import { Hero } from './components/Hero';
 import { RegisterForm } from './components/RegisterForm';
 import { Dashboard } from './components/Dashboard';
 import { LiveTester } from './components/LiveTester';
+import { RecentRegistrations } from './components/RecentRegistrations';
 import { BunkerModal } from './components/BunkerModal';
-import { connectExtension, connectBunker, type NostrSigner } from './nostr/auth';
+import { connectExtension, connectBunker, connectNsec, type NostrSigner } from './nostr/auth';
 import type { Nip05Record, ProfileResponse } from '../shared/types';
 import { Loader2 } from 'lucide-react';
 
@@ -16,6 +17,7 @@ export const App: React.FC = () => {
   const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
   const [loginModalOpen, setLoginModalOpen] = useState<boolean>(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState<string>('0x4AAAAAAEl4x1ap7RLYnwSq');
+  const [recentRefreshTrigger, setRecentRefreshTrigger] = useState<number>(0);
 
   // Fetch runtime config (Turnstile Site Key from Cloudflare Worker)
   useEffect(() => {
@@ -49,10 +51,11 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Restore session from localStorage if present
+  // Restore session from localStorage or sessionStorage if present
   useEffect(() => {
-    const savedType = localStorage.getItem('rehber_auth_type');
-    const savedBunkerUri = localStorage.getItem('rehber_bunker_uri');
+    const savedType = sessionStorage.getItem('rehber_auth_type') || localStorage.getItem('rehber_auth_type');
+    const savedBunkerUri = sessionStorage.getItem('rehber_bunker_uri') || localStorage.getItem('rehber_bunker_uri');
+    const savedNsec = sessionStorage.getItem('rehber_nsec') || localStorage.getItem('rehber_nsec');
 
     if (savedType === 'extension' && typeof window !== 'undefined' && window.nostr) {
       connectExtension()
@@ -63,6 +66,7 @@ export const App: React.FC = () => {
         })
         .catch(() => {
           localStorage.removeItem('rehber_auth_type');
+          sessionStorage.removeItem('rehber_auth_type');
         });
     } else if (savedType === 'bunker' && savedBunkerUri) {
       connectBunker(savedBunkerUri)
@@ -74,17 +78,43 @@ export const App: React.FC = () => {
         .catch(() => {
           localStorage.removeItem('rehber_auth_type');
           localStorage.removeItem('rehber_bunker_uri');
+          sessionStorage.removeItem('rehber_auth_type');
+          sessionStorage.removeItem('rehber_bunker_uri');
         });
+    } else if (savedType === 'nsec' && savedNsec) {
+      try {
+        const { signer: s, pubkey: pk } = connectNsec(savedNsec);
+        setSigner(s);
+        setPubkey(pk);
+        fetchProfile(pk);
+      } catch {
+        localStorage.removeItem('rehber_auth_type');
+        localStorage.removeItem('rehber_nsec');
+        sessionStorage.removeItem('rehber_auth_type');
+        sessionStorage.removeItem('rehber_nsec');
+      }
     }
   }, [fetchProfile]);
 
-  const handleLoginSuccess = (newSigner: NostrSigner, newPubkey: string) => {
+  const handleLoginSuccess = (newSigner: NostrSigner, newPubkey: string, rememberMe = true) => {
     setSigner(newSigner);
     setPubkey(newPubkey);
-    localStorage.setItem('rehber_auth_type', newSigner.type);
+
+    const targetStorage = rememberMe ? localStorage : sessionStorage;
+    const cleanStorage = rememberMe ? sessionStorage : localStorage;
+
+    cleanStorage.removeItem('rehber_auth_type');
+    cleanStorage.removeItem('rehber_bunker_uri');
+    cleanStorage.removeItem('rehber_nsec');
+
+    targetStorage.setItem('rehber_auth_type', newSigner.type);
     if (newSigner.type === 'bunker' && newSigner.bunkerUri) {
-      localStorage.setItem('rehber_bunker_uri', newSigner.bunkerUri);
+      targetStorage.setItem('rehber_bunker_uri', newSigner.bunkerUri);
     }
+    if (newSigner.type === 'nsec' && newSigner.nsec) {
+      targetStorage.setItem('rehber_nsec', newSigner.nsec);
+    }
+
     fetchProfile(newPubkey);
   };
 
@@ -94,6 +124,10 @@ export const App: React.FC = () => {
     setRecord(null);
     localStorage.removeItem('rehber_auth_type');
     localStorage.removeItem('rehber_bunker_uri');
+    localStorage.removeItem('rehber_nsec');
+    sessionStorage.removeItem('rehber_auth_type');
+    sessionStorage.removeItem('rehber_bunker_uri');
+    sessionStorage.removeItem('rehber_nsec');
   };
 
   return (
@@ -118,7 +152,10 @@ export const App: React.FC = () => {
             signer={signer}
             turnstileSiteKey={turnstileSiteKey}
             onUpdate={(updated) => setRecord(updated)}
-            onDelete={() => setRecord(null)}
+            onDelete={() => {
+              setRecord(null);
+              setRecentRefreshTrigger((prev) => prev + 1);
+            }}
           />
         ) : (
           <RegisterForm
@@ -126,9 +163,15 @@ export const App: React.FC = () => {
             signer={signer}
             turnstileSiteKey={turnstileSiteKey}
             onOpenLogin={() => setLoginModalOpen(true)}
-            onSuccess={(newRecord) => setRecord(newRecord)}
+            onSuccess={(newRecord) => {
+              setRecord(newRecord);
+              setRecentRefreshTrigger((prev) => prev + 1);
+            }}
           />
         )}
+
+        {/* Son Alınan Kullanıcı Adları (Recent Registrations) */}
+        <RecentRegistrations refreshTrigger={recentRefreshTrigger} />
 
         {/* Live Playground / Tester */}
         <div className="pt-8">

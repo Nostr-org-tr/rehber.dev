@@ -1,12 +1,13 @@
 import type { Event, EventTemplate } from 'nostr-tools';
-import { nip19, generateSecretKey, getPublicKey } from 'nostr-tools';
+import { nip19, generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import { BunkerSigner, parseBunkerInput } from 'nostr-tools/nip46';
 
 export interface NostrSigner {
-  type: 'extension' | 'bunker';
+  type: 'extension' | 'bunker' | 'nsec';
   getPublicKey(): Promise<string>;
   signEvent(template: EventTemplate): Promise<Event>;
   bunkerUri?: string;
+  nsec?: string;
 }
 
 declare global {
@@ -75,6 +76,70 @@ export async function connectBunker(bunkerUri: string): Promise<{ signer: NostrS
     bunkerUri,
     getPublicKey: async () => pubkey,
     signEvent: async (template: EventTemplate) => bunkerSigner.signEvent(template)
+  };
+
+  return { signer, pubkey };
+}
+
+/**
+ * Parses and validates an nsec string (Bech32 nsec1...) or 64-char hex private key into Uint8Array.
+ */
+export function parseNsecInput(input: string): Uint8Array {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error('Özel anahtar boş bırakılamaz');
+  }
+
+  // 1. Bech32 format (nsec1...)
+  if (trimmed.startsWith('nsec1')) {
+    try {
+      const decoded = nip19.decode(trimmed);
+      if (decoded.type === 'nsec' && decoded.data instanceof Uint8Array && decoded.data.length === 32) {
+        return decoded.data;
+      }
+    } catch {
+      throw new Error('Geçersiz nsec formatı (Bech32 çözümlenemedi)');
+    }
+    throw new Error('Geçersiz nsec formatı');
+  }
+
+  // 2. 64-character hex format
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    const bytes = new Uint8Array(
+      trimmed.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+    );
+    if (bytes.length === 32) {
+      return bytes;
+    }
+  }
+
+  throw new Error('Geçersiz özel anahtar formatı (nsec1... veya 64 haneli hex formatında olmalıdır)');
+}
+
+/**
+ * Checks if the given string is a valid nsec or 64-char hex key.
+ */
+export function isValidNsec(input: string): boolean {
+  try {
+    parseNsecInput(input);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Connect using Nostr private key (nsec1... or 64-char hex)
+ */
+export function connectNsec(input: string): { signer: NostrSigner; pubkey: string } {
+  const secretKey = parseNsecInput(input);
+  const pubkey = getPublicKey(secretKey);
+
+  const signer: NostrSigner = {
+    type: 'nsec',
+    nsec: input.trim(),
+    getPublicKey: async () => pubkey,
+    signEvent: async (template: EventTemplate) => finalizeEvent(template, secretKey)
   };
 
   return { signer, pubkey };
